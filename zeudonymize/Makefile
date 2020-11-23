@@ -25,7 +25,7 @@ clean:
 
 PKG_NAME-main= 			zeudonymize
 PKG_INSTALL_FILES-main=	zeudonymize
-PKG_PREFIX-main= 		/usr/local
+PKG_PREFIX-main?= 		/usr/local
 PKG_INSTALL_DIR-main=	/bin
 PKG_TARBALL_FILES-main= ${PKG_FILES-main} Makefile
 
