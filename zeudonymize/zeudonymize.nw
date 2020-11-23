@@ -241,7 +241,7 @@ with open(in_filename, "r") as in_file, open(out_filename, "w") as out_file:
     print(line, file=out_file)
 
 with open(out_pseudonyms, "w") as nym_file:
-  print(json.dumps(nym_map), file=nym_file)
+  print(json.dumps(nym_map, indent=2), file=nym_file)
 @ This requires the JSON module.
 <<cli imports>>=
 import json
