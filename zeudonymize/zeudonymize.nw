@@ -1,0 +1,328 @@
+\documentclass[a4paper]{article}
+\usepackage{noweb}
+% Needed to relax penalty for breaking code chunks across pages, otherwise 
+% there might be a lot of space following a code chunk.
+\def\nwendcode{\endtrivlist \endgroup}
+\let\nwdocspar=\smallbreak
+
+\usepackage[hyphens]{url}
+\usepackage{hyperref}
+\usepackage{authblk}
+
+\input{preamble.tex}
+
+\title{%
+  zeudonymize: Pseudonymizing Zoom chats
+}
+\author{%
+  Daniel Bosk
+}
+\affil{%
+  KTH EECS
+}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+  \input{abstract.tex}
+\end{abstract}
+\clearpage
+
+\tableofcontents
+\clearpage
+
+@
+\section{Introduction}
+
+This is the documentation of the [[<<zeudonymize.py>>]] Python 3 script.
+It pseudonymizes chat transcripts produced by Zoom.
+
+\subsection{Structural overview}\label{code-overview}
+
+We use a standard structure for the script.
+We have functions in the [[<<functions>>]] code block.
+We have a [[main]] function which is run if the script is run directly but not 
+if it is imported.
+<<zeudonymize.py>>=
+#!/usr/bin/env python3
+
+import re
+import sys
+
+<<cli imports>>
+
+<<classes>>
+<<functions>>
+
+def main(argv):
+    <<main body>>
+
+if __name__ == '__main__':
+  sys.exit(main(sys.argv[1:]))
+@
+
+\Cref{pseudonymizing} describes the function and algorithm used to pseudonomize 
+data.
+\Cref{CLI} describes the command-line interface for the function.
+
+
+\section{Pseudonymizing entries}\label{pseudonymizing}
+
+The Zoom chat format is line based.
+For example, publicly sent messages looks like this:
+\begin{verbatim}
+15:01:45	 From Ric Glassey : Hey, yes, we have academic quarter
+15:02:00	 From Ric Glassey : So 15 more minutes of bing bong
+15:02:43	 From Daniel Bosk : Don't remember if I configured it so that only we hear the bing bong or everyone.
+15:02:54	 From Ric Glassey : So it’s just me that suffers ;-)
+15:02:59	 From Daniel Bosk : Anyway, for us hosts at least, there is a bing bong sound whenever someone joins.
+\end{verbatim}
+Whereas messages sent privately to the teacher looks like this:
+\begin{verbatim}
+15:12:15	 From Student To Daniel Bosk(Privately) : it seems manageable indeed
+15:12:32	 From Student To Daniel Bosk(Privately) : sry, meant for everyone :)
+\end{verbatim}
+
+To pseudonymize, we need to know what pseudonym to use for whom.
+We have three cases:
+\begin{alternatives}
+\item\label{anon} We don't want to track pseudonyms (anonymity), even within a 
+transcript.
+\item\label{localnym} We want to track pseudonyms only within a transcript.
+\item\label{globalnym} We want to track pseudonyms across transcripts.
+\end{alternatives}
+\Cref{anon} is not that useful.
+\Cref{localnym,globalnym} preserve some useful structure.
+
+We might also want to preserve some other structure.
+For instance, in a teaching situation, we might want to distinguish teachers 
+from students.
+This leaves us with the following questions:
+\begin{questions}
+\item\label{teachers} Who are the teachers?
+\item\label{pseudonyms} How to pseudonymize teachers and students separately?
+\end{questions}
+If we know the teachers (\cref{teachers}), everyone else must be a student 
+(assumption).
+
+For the pseudonyms (\cref{pseudonyms}), we could generate random names or have 
+more structured names (\eg \enquote{Student \(N\)}).
+The latter would make distinguishing roles easier.
+
+This leads to the following design.
+We will use a map (dictionary, [[nym_map]]) from real name to pseudonym.
+Any name not in that map will get a generated name, based on a prefix 
+([[prefix]]) and number (\eg Student \(N\)), and that is added to the map.
+Then we can replace all instances in the map.
+<<functions>>=
+def pseudonymize(lines, nym_map, prefix="Student"):
+  pseudonym = PseudonymFactory(prefix, nym_map)
+  for line in lines:
+    sender, recipient = parties(line)
+
+    if not sender in nym_map:
+      nym_map[sender] = pseudonym.next()
+    line = substitute(line, sender, nym_map[sender])
+
+    if recipient and not recipient in nym_map:
+      nym_map[recipient] = pseudonym.next()
+      line = substitute(line, recipient, nym_map[recipient])
+
+    yield line
+@
+
+The [[PseudonymFactory]] is discussed in \cref{PseudonymFactory}.
+The [[parties]] function is discussed in \cref{parties}.
+
+We can do the substitution by regular expression.
+<<functions>>=
+def substitute(string, frm, to):
+  pattern = re.compile(frm)
+  return pattern.sub(to, string)
+@
+
+
+\subsection{Generate new pseudonym}\label{PseudonymFactory}
+
+As mentioned earlier, we will generate structural pseudonyms of the form of a 
+prefix followed by a number (Student \(N\)).
+We need a pseudonym factory that produces a new pseudonym when we need it.
+
+To set up the factory we need two things:
+\begin{enumerate}
+\item the pseudonym prefix,
+\item the already allocated pseudonyms (from \cref{globalnym} above).
+\end{enumerate}
+
+We will do this as a class.
+However, we will not use static methods and attributes.
+We will have a global instance, this way we can have one instance per pseudonym 
+\enquote{class} that we're interested in, \eg one for students and one for 
+teachers.
+<<classes>>=
+class PseudonymFactory:
+  def __init__(self, prefix, nym_map):
+    self.__prefix = prefix
+    self.__num = 0
+    <<find actual num from nym map>>
+
+  def __str__(self):
+    return f"{self.__prefix} {self.__num}"
+
+  def next(self):
+    self.__num += 1
+    return str(self)
+
+  def __next__(self):
+    return self.next()
+@
+
+The main work to be done is to find the correct value for [[self.__num]] from 
+what is already in the pseudonym map~[[nym_map]].
+We must go through all pseudonyms in [[nym_map]] and find the highest occurring 
+number for the pseudonym [[prefix]].
+<<find actual num from nym map>>=
+pattern = re.compile(f"{prefix} (\\d+)")
+for _, pseudonym in nym_map.items():
+  match = pattern.match(pseudonym)
+  if match:
+    self.__num = max(self.__num, int(match.group(1)))
+@
+
+
+\subsection{Extracting the parties of a line, [[parties]]}\label{parties}
+
+We must extract the parties of the line~[[line]], \ie the sender and 
+potentially the recipient.
+We will use regular expressions.
+
+We will first find a potential recipient, since this only happens for private 
+messages.
+Then, depending on whether there is a recipient or not, we can use different 
+regexes for the sender.
+This reduced the complexity of the regexes.
+<<functions>>=
+def parties(line):
+  recipient = re.compile("To (.*(?=\(Privately\)))").search(line)
+  sender = re.compile("From ([^:]*(?= To ))").search(line) if recipient \
+    else re.compile("From ([^:]*) :").search(line)
+
+  try:
+    if recipient:
+      return sender.group(1), recipient.group(1)
+    return sender.group(1), None
+  except AttributeError:
+    raise ValueError(f"malformed: {line}")
+@
+
+
+\section{A command-line interface}\label{CLI}
+
+We will now provide a command-line interface for the [[pseudonymize]] function.
+We remember from \cref{code-overview} that we provide the command-line 
+interface in the main body, \ie [[<<main body>>]].
+
+We will parse the command-line arguments to set up the variables needed for the 
+following code.
+We take the filename of a chat transcript and produce two output files:
+the first is the pseudonymized chat transcript, the second is the nym map in 
+JSON format.
+<<main body>>=
+<<parse command-line arguments>>
+<<process command-line arguments>>
+
+out_base, out_ext = os.path.splitext(in_filename)
+out_filename = out_base + "-pseudonymized" + out_ext
+out_pseudonyms = out_base + ".nyms"
+
+with open(in_filename, "r") as in_file, open(out_filename, "w") as out_file:
+  for line in pseudonymize(in_file.readlines(), nym_map, prefix):
+    print(line, file=out_file)
+
+with open(out_pseudonyms, "w") as nym_file:
+  print(json.dumps(nym_map), file=nym_file)
+@ This requires the JSON module.
+<<cli imports>>=
+import json
+@
+
+From the code in [[<<main body>>]] and the function signature of 
+[[pseudonymize]] we need:
+\begin{itemize}
+\item the filename of the input chat transcript ([[in_filename]]),
+\item a pseudonym map ([[nym_map]]),
+\item a prefix for generating new pseudonyms ([[prefix]]).
+\end{itemize}
+
+\subsection{Parsing command-line arguments}
+
+To parse command-line arguments we will make use of [[argparse]]:
+<<cli imports>>=
+import argparse
+import os
+@
+
+We first create a parser, then set up the valid arguments and finally provide 
+the dictionary [[args]] containing each argument that was passed on the command 
+line.
+<<parse command-line arguments>>=
+argp = argparse.ArgumentParser(description="zeudonymize: Pseudonymizing Zoom chats")
+
+<<valid argparse arguments>>
+
+args = vars(argp.parse_args(argv))
+@
+
+\subsection{Getting the input file ([[in_filename]]) and prefix ([[prefix]])}
+
+We expect the filename of the original transcript as an argument.
+<<valid argparse arguments>>=
+argp.add_argument("-t", "--transcript", required=True,
+  help="Filename of the chat transcript")
+@ Then we can use it as follows.
+<<process command-line arguments>>=
+in_filename = args["transcript"]
+@
+
+We can do exactly the same for the pseudonym prefix.
+<<valid argparse arguments>>=
+argp.add_argument("-p", "--prefix", type=str, default="Student",
+  help="Pseudonym prefix for new pseudonyms")
+@ Then we can use it as follows.
+<<process command-line arguments>>=
+prefix = args["prefix"]
+@
+
+\subsection{Getting the pseudonym map ([[nym_map]])}
+
+We want the user to be able to use an already defined pseudonym map.
+This is useful for the case of persistent pseudonyms across transcripts.
+It's also useful for distinguishing teachers from students:
+in this case we provide predefined pseudonyms for the teachers and generate 
+pseudonyms for everyone else (\ie students).
+
+Since we printed the pseudonym map to file encoded in JSON format, we will 
+simply read back such a file.
+<<valid argparse arguments>>=
+argp.add_argument("-n", "--nymfile", type=str,
+  help="Filename of the nym map")
+@ With the filename provided by the user, we can read it and parse it back to 
+the [[nym_map]] object.
+<<process command-line arguments>>=
+if args["nymfile"]:
+  with open(args["nymfile"], "r") as nym_file:
+    nym_map = json.loads(nym_file.read())
+else:
+  nym_map = {}
+@
+
+
+
+\printbibliography
+
+
+\section{An index of the code blocks}
+\nowebchunks
+
+\end{document}
