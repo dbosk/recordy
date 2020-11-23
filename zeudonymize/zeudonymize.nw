@@ -236,9 +236,13 @@ out_base, out_ext = os.path.splitext(in_filename)
 out_filename = out_base + "-pseudonymized" + out_ext
 out_pseudonyms = out_base + ".nyms"
 
-with open(in_filename, "r") as in_file, open(out_filename, "w") as out_file:
-  for line in pseudonymize(in_file.readlines(), nym_map, prefix):
-    print(line, file=out_file)
+try:
+  with open(in_filename, "r") as in_file, open(out_filename, "w") as out_file:
+    for line in pseudonymize(in_file.readlines(), nym_map, prefix):
+      print(line, file=out_file)
+except FileNotFoundError as err:
+  print(f"file not found: {err}", file=sys.stderr)
+  return -1
 
 with open(out_pseudonyms, "w") as nym_file:
   print(json.dumps(nym_map, indent=2), file=nym_file)
