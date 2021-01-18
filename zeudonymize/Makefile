@@ -32,9 +32,11 @@ clean:
 	${RM} zeudonymize zeudonymize.py zeudonymize.pdf zeudonymize.tex
 
 
+PREFIX?=				/usr/local
+
 PKG_NAME-main= 			zeudonymize
 PKG_INSTALL_FILES-main=	zeudonymize
-PKG_PREFIX-main?= 		/usr/local
+PKG_PREFIX-main?= 		${PREFIX}
 PKG_INSTALL_DIR-main=	/bin
 PKG_TARBALL_FILES-main= ${PKG_FILES-main} Makefile
 
