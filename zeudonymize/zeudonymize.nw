@@ -121,12 +121,13 @@ def pseudonymize(lines, nym_map, prefix="Student"):
   for line in lines:
     sender, recipient = parties(line)
 
-    if not sender in nym_map:
+    if sender not in nym_map:
       nym_map[sender] = pseudonym.next()
     line = substitute(line, sender, nym_map[sender])
 
-    if recipient and not recipient in nym_map:
-      nym_map[recipient] = pseudonym.next()
+    if recipient:
+      if recipient not in nym_map:
+        nym_map[recipient] = pseudonym.next()
       line = substitute(line, recipient, nym_map[recipient])
 
     yield line
@@ -197,6 +198,18 @@ We must extract the parties of the line~[[line]], \ie the sender and
 potentially the recipient.
 We will use regular expressions.
 
+The format of the lines is like this:
+\inputminted{text}{old_format.txt}
+However, it seems like Zoom changed the format, or it's different on different 
+platforms.
+It can also look like this:
+\inputminted{text}{new_format.txt}
+
+We will first find a potential recipient.
+We don't count \enquote{Everyone} as a recipient, so we don't match 
+\enquote{Everyone} as a recipient.
+In fact, we remove it to convert back to the old format.
+Then we can proceed as for the old format.
 We will first find a potential recipient, since this only happens for private 
 messages.
 Then, depending on whether there is a recipient or not, we can use different 
@@ -204,9 +217,16 @@ regexes for the sender.
 This reduced the complexity of the regexes.
 <<functions>>=
 def parties(line):
-  recipient = re.compile("To (.*(?=\(Privately\)))").search(line)
-  sender = re.compile("From ([^:]*(?= To ))").search(line) if recipient \
-    else re.compile("From ([^:]*) :").search(line)
+  to_kw = "[Tt]o"
+  from_kw = "[Ff]rom"
+  private_kw = "(Privately|Direct Message)"
+
+  line = re.sub(f" {to_kw} Everyone", "", line)
+
+  recipient = re.compile(f"{to_kw} (.*(?=\({private_kw}\)))").search(line)
+  sender = re.compile(f"{from_kw} ([^:]*(?= {to_kw} ))").search(line) \
+    if recipient \
+    else re.compile(f"{from_kw} ([^:]*) :").search(line)
 
   try:
     if recipient:

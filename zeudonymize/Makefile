@@ -5,6 +5,7 @@ LATEXFLAGS+=	-shell-escape
 
 zeudonymize.pdf: zeudonymize.tex zeudonymize.bib
 zeudonymize.pdf: abstract.tex
+zeudonymize.pdf: old_format.txt new_format.txt
 
 zeudonymize.tex: zeudonymize.nw
 
@@ -16,6 +17,14 @@ zeudonymize.py: zeudonymize.nw
 zeudonymize: zeudonymize.py
 	cp $^ $@
 	chmod +x $@
+
+
+.PHONY: test
+test: zeudonymize
+	./zeudonymize -t old_format.txt -p OldStudent
+	cat old_format-pseudonymized.txt
+	./zeudonymize -t new_format.txt -p NewStudent
+	cat new_format-pseudonymized.txt
 
 
 .PHONY: clean

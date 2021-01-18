@@ -1,0 +1,11 @@
+__pycache__
+ltxobj/
+new_format-pseudonymized.txt
+new_format.nyms
+old_format-pseudonymized.txt
+old_format.nyms
+zeudonymize
+zeudonymize.pdf
+zeudonymize.py
+zeudonymize.tex
+
