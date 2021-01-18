@@ -344,9 +344,4 @@ else:
 
 
 \printbibliography
-
-
-\section{An index of the code blocks}
-\nowebchunks
-
 \end{document}
